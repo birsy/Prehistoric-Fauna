@@ -144,7 +144,20 @@ import superlord.prehistoricfauna.common.util.QuarkFlagRecipeCondition;
 import superlord.prehistoricfauna.common.util.RegistryHelper;
 import superlord.prehistoricfauna.config.PFConfigHolder;
 import superlord.prehistoricfauna.config.PrehistoricFaunaConfig;
-import superlord.prehistoricfauna.init.*;
+import superlord.prehistoricfauna.init.PFBiomes;
+import superlord.prehistoricfauna.init.PFBlockEntities;
+import superlord.prehistoricfauna.init.PFBlocks;
+import superlord.prehistoricfauna.init.PFConfiguredFeatures;
+import superlord.prehistoricfauna.init.PFContainers;
+import superlord.prehistoricfauna.init.PFEffects;
+import superlord.prehistoricfauna.init.PFEntities;
+import superlord.prehistoricfauna.init.PFFeatures;
+import superlord.prehistoricfauna.init.PFItems;
+import superlord.prehistoricfauna.init.PFPlacedFeatures;
+import superlord.prehistoricfauna.init.PFProfessions;
+import superlord.prehistoricfauna.init.PFRecipes;
+import superlord.prehistoricfauna.init.PFStructures;
+import superlord.prehistoricfauna.init.PFWoodTypes;
 
 @Mod(PrehistoricFauna.MOD_ID)
 @Mod.EventBusSubscriber(modid = PrehistoricFauna.MOD_ID)
@@ -186,7 +199,6 @@ public class PrehistoricFauna {
 		PFPlacedFeatures.REGISTER.register(bus);
 		PFEffects.REGISTER.register(bus);
 		PFBiomes.REGISTER.register(bus);
-		PFChunkGenerators.REGISTER.register(bus);
 		modLoadingContext.registerConfig(ModConfig.Type.CLIENT, PFConfigHolder.CLIENT_SPEC);
 		modLoadingContext.registerConfig(ModConfig.Type.COMMON, PFConfigHolder.SERVER_SPEC);
 		CraftingHelper.register(new QuarkFlagRecipeCondition.Serializer());
