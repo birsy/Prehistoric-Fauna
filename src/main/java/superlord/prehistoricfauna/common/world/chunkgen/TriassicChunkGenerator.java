@@ -2,10 +2,11 @@ package superlord.prehistoricfauna.common.world.chunkgen;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.*;
@@ -20,12 +21,14 @@ import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.*;
 import net.minecraft.world.level.levelgen.blending.Blender;
 import net.minecraft.world.level.levelgen.structure.StructureSet;
-import net.minecraft.world.phys.Vec3;
+import superlord.prehistoricfauna.PrehistoricFauna;
 import superlord.prehistoricfauna.common.util.FastNoise;
+import superlord.prehistoricfauna.common.world.biome.surfacedecorators.BasicSurfaceDecorator;
+import superlord.prehistoricfauna.common.world.biome.surfacedecorators.SurfaceDecorator;
+import superlord.prehistoricfauna.common.world.biome.surfacedecorators.SurfaceDecorators;
+import superlord.prehistoricfauna.init.PFBlocks;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -60,7 +63,6 @@ public class TriassicChunkGenerator extends ChunkGenerator {
                 new FastNoiseDensityFunction(noise, -800),
                 new FastNoiseDensityFunction(noise, 1600),
                 new ArrayList<>());
-
         initializeNoise(seed);
     }
 
@@ -94,7 +96,33 @@ public class TriassicChunkGenerator extends ChunkGenerator {
 
     @Override
     public void buildSurface(WorldGenRegion region, StructureFeatureManager structureFeatureManager, ChunkAccess chunk) {
+        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                //when it encounters a new surface, check the biome and generate the corresponding surface.
+                int startHeight = chunk.getHeight(Heightmap.Types.WORLD_SURFACE_WG, x, z);
+                pos.set(x + chunk.getPos().getMinBlockX(), startHeight, z + chunk.getPos().getMinBlockZ());
 
+                boolean isInSolid = false;
+                boolean visibleToSun = true;
+                while (pos.getY() > this.getMinY() + 5) {
+                    ///PrehistoricFauna.LOGGER.info("b");
+                    if (chunk.getBlockState(pos) == this.settings.value().defaultBlock()) {
+                        if (!isInSolid) {
+                            ResourceLocation biome = region.getBiome(pos).value().getRegistryName();
+                            SurfaceDecorators.getSurfaceDecorator(biome).buildSurface(pos, this.getSeaLevel(), visibleToSun, chunk, settings.value());
+                            isInSolid = true;
+                            visibleToSun = false;
+                        }
+                    } else {
+                        isInSolid = false;
+                    }
+
+                    pos.move(Direction.DOWN);
+
+                }
+            }
+        }
     }
 
     @Override
@@ -111,30 +139,45 @@ public class TriassicChunkGenerator extends ChunkGenerator {
     //where the magic happens
     public CompletableFuture<ChunkAccess> fillFromNoise(Executor executor, Blender blender, StructureFeatureManager structureFeatureManager, ChunkAccess chunk) {
         fillNoiseSampleArrays(chunk);
-
+        Heightmap[] heightmaps = {chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.OCEAN_FLOOR_WG), chunk.getOrCreateHeightmapUnprimed(Heightmap.Types.WORLD_SURFACE_WG)};
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        int minX = chunk.getPos().getMinBlockX();
-        int minZ = chunk.getPos().getMinBlockZ();
+
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                for (int y = this.getMinY(); y < this.getMaxY(); y++) {
+                for (int y = this.getMaxY(); y >= this.getMinY(); y--) {
                     pos.set(x, y, z);
                     float sample = sampleDensityFromArray(terrainShapeSamplePoints, x, y, z);
 
+                    BlockState state;
                     if (sample > 0) {
-                        chunk.setBlockState(pos, settings.value().defaultBlock(), false);
+                        state = settings.value().defaultBlock();
                     } else {
-                        chunk.setBlockState(pos, y > this.getSeaLevel() ? Blocks.AIR.defaultBlockState() : Blocks.WATER.defaultBlockState(), false);
+                        state =  y > this.getSeaLevel() ? Blocks.AIR.defaultBlockState() : Blocks.WATER.defaultBlockState();
                     }
+
+                    for (Heightmap heightmap : heightmaps) {
+                        heightmap.update(x, y, z, state);
+                    }
+
+                    chunk.setBlockState(pos, state, false);
                 }
             }
         }
+
         return CompletableFuture.completedFuture(chunk);
     }
 
     private float sampleDensity(float x, float y, float z) {
+        int seaLevel = this.settings.value().seaLevel();
+        if (y > seaLevel) y = y + 3;
+
         float frequency1 = 0.3F;
         float sample = noise.GetNoise(x * frequency1, y * frequency1 * 0.8F, z * frequency1);
+
+        float floor = -0.2F;
+        float smoothness = 0.001F;
+        float h = Mth.clamp(0.5F + 0.5F * (sample - floor) / smoothness, 0.0F, 1.0F);
+        sample = Mth.lerp(sample, floor, h) - smoothness * h * (1.0F - h);
 
         float bigRockFrequency = 1.0F;
         float rockNoise = noise.GetNoise(x * bigRockFrequency, (y * frequency1) + 512, z * bigRockFrequency);
@@ -144,12 +187,34 @@ public class TriassicChunkGenerator extends ChunkGenerator {
         bigRockNoise *= bigRockStrength;
         bigRockNoise += (1F - bigRockStrength);
 
+        float hugeCliffFrequency = 0.5F;
+        float hugeCliffNoise = noise.GetNoise(x * hugeCliffFrequency, 2834, z * hugeCliffFrequency);
+        hugeCliffNoise = (float) Math.pow(hugeCliffNoise, 8);
+
+        float lumpFrequency = 1.5F;
+        float cliffLumpiness = noise.GetNoise(x * lumpFrequency, y * lumpFrequency * 0.8F, z * lumpFrequency);
+        cliffLumpiness *= hugeCliffNoise * 1.2F;
+
         float frequency2 = 2.5F;
         sample += Mth.abs(noise.GetNoise(x * frequency2, y * frequency2, z * frequency2) * 0.2F);
         float frequency3 = 3.5F;
         sample += Mth.abs(noise.GetNoise(x * frequency3, y * frequency3, z * frequency3) * 0.05F);
+        sample += cliffLumpiness;
 
-        sample -= (y - this.settings.value().seaLevel()) / (16.0F / bigRockNoise);
+        float riverFrequency = 1.0F;
+        float riverNoise = noise.GetNoise(x * riverFrequency, 0, z * riverFrequency);
+        riverNoise = 1.0F - Mth.abs(riverNoise);
+        riverNoise *= 0.2;
+
+        float rockFrequency = 1.2F;
+        float pebbleNoise = noise.GetNoise(x * rockFrequency, 0, z * rockFrequency);
+        pebbleNoise = Mth.abs(pebbleNoise);
+        pebbleNoise *= 0.2;
+
+        pebbleNoise -= riverNoise;
+        sample -= riverNoise;
+
+        sample -= (y - this.settings.value().seaLevel() - hugeCliffNoise * 128) / (16.0F / bigRockNoise * (hugeCliffNoise * 10 + 1));
 
 
         return sample;
@@ -208,7 +273,7 @@ public class TriassicChunkGenerator extends ChunkGenerator {
         float xLerp4 = Mth.lerp(sxFrac, densityArray[sxF][syC][szC], densityArray[sxC][syC][szC]);
         float zLerp2 = Mth.lerp(szFrac, xLerp3, xLerp4);
 
-        float yLerp = Mth.lerp(syFrac, zLerp1, zLerp2);
+        float yLerp = Mth.lerp(Mth.lerp(Mth.clamp((float)(localY - this.getSeaLevel()) / 64F, 0F, 1F), syFrac * syFrac * syFrac, syFrac), zLerp1, zLerp2);
 
         return yLerp;
     }
