@@ -183,39 +183,42 @@ public class TriassicChunkGenerator extends ChunkGenerator {
         float rockNoise = noise.GetNoise(x * bigRockFrequency, (y * frequency1) + 512, z * bigRockFrequency);
         float bigRockNoise = Mth.sqrt(sample * sample + rockNoise * rockNoise);
         bigRockNoise = (sample < 0 || rockNoise < 0) ? 1 : bigRockNoise;
-        float bigRockStrength = 0.9F;
+        float bigRockStrength = 0.2F;
         bigRockNoise *= bigRockStrength;
         bigRockNoise += (1F - bigRockStrength);
 
-        float hugeCliffFrequency = 0.5F;
+        float hugeCliffFrequency = 0.3F;
         float hugeCliffNoise = noise.GetNoise(x * hugeCliffFrequency, 2834, z * hugeCliffFrequency);
-        hugeCliffNoise = (float) Math.pow(hugeCliffNoise, 8);
+        hugeCliffNoise = (float) Mth.clamp(Math.pow(1.3 * hugeCliffNoise, 12), 0, 1);
+        float hugeCliffWobble = -0.5F * Mth.cos(2F * Mth.PI * hugeCliffNoise) + 0.5F;
+        hugeCliffWobble *= 1.5F;
 
-        float lumpFrequency = 1.5F;
+        float lumpFrequency = 4.3F;
         float cliffLumpiness = noise.GetNoise(x * lumpFrequency, y * lumpFrequency * 0.8F, z * lumpFrequency);
-        cliffLumpiness *= hugeCliffNoise * 1.2F;
+        cliffLumpiness *= hugeCliffWobble * 0.1F;
+        sample += cliffLumpiness;
 
         float frequency2 = 2.5F;
         sample += Mth.abs(noise.GetNoise(x * frequency2, y * frequency2, z * frequency2) * 0.2F);
         float frequency3 = 3.5F;
         sample += Mth.abs(noise.GetNoise(x * frequency3, y * frequency3, z * frequency3) * 0.05F);
-        sample += cliffLumpiness;
 
-        float riverFrequency = 1.0F;
+        float riverFrequency = 0.1F;
         float riverNoise = noise.GetNoise(x * riverFrequency, 0, z * riverFrequency);
-        riverNoise = 1.0F - Mth.abs(riverNoise);
-        riverNoise *= 0.2;
+        riverNoise = 1.0F - riverNoise * riverNoise;
+        riverNoise *= 0.1;
 
         float rockFrequency = 1.2F;
         float pebbleNoise = noise.GetNoise(x * rockFrequency, 0, z * rockFrequency);
         pebbleNoise = Mth.abs(pebbleNoise);
-        pebbleNoise *= 0.2;
+        pebbleNoise *= 1;
 
-        pebbleNoise -= riverNoise;
+        sample += pebbleNoise;
         sample -= riverNoise;
+        sample -= 0.15F;
+        sample -= (y - this.settings.value().seaLevel() - hugeCliffNoise * 64) / (16.0F / bigRockNoise * (hugeCliffWobble + 1));
 
-        sample -= (y - this.settings.value().seaLevel() - hugeCliffNoise * 128) / (16.0F / bigRockNoise * (hugeCliffNoise * 10 + 1));
-
+       //PrehistoricFauna.LOGGER.info("a");
 
         return sample;
     }
